@@ -1,0 +1,177 @@
+<!DOCTYPE html><html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>骰 4‧5‧6</title>
+  <meta name="description" content="六面骰，但只會出現 4、5、6。" />
+  <style>
+    :root{
+      --bg:#0f172a; /* slate-900 */
+      --card:#111827ee; /* gray-900 */
+      --ink:#e5e7eb; /* gray-200 */
+      --accent:#22d3ee; /* cyan-400 */
+      --muted:#94a3b8; /* slate-400 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;
+      background:radial-gradient(1200px 600px at 70% -10%, #1e293b 0%, #0f172a 55%, #0b1222 100%);
+      color:var(--ink);
+      display:grid; place-items:center;
+    }
+    .app{ width:min(880px,94vw); padding:24px; }
+    .hero{ display:flex; gap:18px; align-items:center; justify-content:space-between; flex-wrap:wrap;}
+    h1{ font-size:clamp(24px,3.6vw,36px); margin:0; letter-spacing:0.5px }
+    .muted{ color:var(--muted); font-size:14px }.desk{
+  display:grid; grid-template-columns: 1fr 320px; gap:20px; align-items:stretch;
+}
+@media (max-width:800px){ .desk{ grid-template-columns:1fr; } }
+
+.card{ background:var(--card); border:1px solid #1f2937; border-radius:16px; padding:18px; box-shadow:0 10px 30px #0007 }
+
+.stage{ display:grid; place-items:center; height:340px }
+
+/* Dice */
+.die{ width:180px; height:180px; border-radius:24px; background:#111827; border:2px solid #2a3443; position:relative; box-shadow:inset 0 6px 18px #000a, 0 16px 40px #0007; display:grid; place-items:center }
+.pip{ width:20px; height:20px; background:var(--ink); border-radius:50%; position:absolute; box-shadow:0 2px 0 #0007 }
+.die[data-anim="spin"]{ animation:spin 480ms cubic-bezier(.3,.7,.2,1) }
+@keyframes spin{ 0%{ transform:rotate(0)} 100%{ transform:rotate(360deg)} }
+
+/* Layout helpers for pips */
+.pos{position:absolute;}
+.p1{ inset:calc(50% - 10px) auto auto calc(50% - 10px) }
+.p2{ top:26px; left:26px }
+.p3{ top:26px; right:26px }
+.p4{ bottom:26px; left:26px }
+.p5{ bottom:26px; right:26px }
+.pc{ top:calc(50% - 10px); left:calc(50% - 10px) }
+.pm{ top:calc(50% - 10px); left:26px }
+.pn{ top:calc(50% - 10px); right:26px }
+
+.controls{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin-top:16px }
+button{
+  appearance:none; border:1px solid #2a3443; background:#0ea5b7; color:#001018; font-weight:700;
+  padding:12px 16px; border-radius:14px; cursor:pointer; transition:.15s transform, .15s filter; letter-spacing:.3px
+}
+button:hover{ filter:brightness(1.05) }
+button:active{ transform:translateY(1px) }
+.ghost{ background:#0b1222; color:var(--ink) }
+
+.side{ display:grid; gap:12px }
+
+.history{ max-height:280px; overflow:auto; border-radius:12px; border:1px solid #1f2937 }
+.history table{ width:100%; border-collapse:collapse; font-size:14px }
+.history th, .history td{ padding:8px 10px; border-bottom:1px solid #1f2937; text-align:left }
+.history tr:last-child td{ border-bottom:none }
+.tag{ font: 11px/1 ui-sans-serif,system-ui; padding:4px 8px; border-radius:999px; border:1px solid #334155; background:#0b1222; color:var(--muted) }
+.kbd{ font:12px mono; border:1px solid #334155; padding:2px 6px; border-radius:6px; color:#cbd5e1 }
+a{ color:var(--accent); text-decoration:none }
+
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <div>
+        <h1>骰 4‧5‧6</h1>
+        <div class="muted">六面骰的外觀，結果域被限制為 {4,5,6}。公平隨機，均勻分布。</div>
+      </div>
+      <div class="tag">空白鍵也能擲骰</div>
+    </header><section class="desk">
+  <section class="card">
+    <div class="stage">
+      <div id="die" class="die" aria-live="polite" aria-label="骰子目前點數 6"></div>
+    </div>
+    <div class="controls">
+      <button id="roll">擲骰</button>
+      <button id="reset" class="ghost">清空紀錄</button>
+    </div>
+  </section>
+
+  <aside class="side">
+    <section class="card">
+      <strong>機制</strong>
+      <p class="muted">結果僅從 <code>{4,5,6}</code> 均勻抽取。視覺仍渲染對應面數。</p>
+      <p class="muted">鍵盤 <span class="kbd">Space</span> 擲骰；<span class="kbd">R</span> 重置。</p>
+    </section>
+    <section class="card history">
+      <table id="log">
+        <thead><tr><th style="width:64px">次序</th><th>結果</th><th>時間</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </aside>
+</section>
+
+  </main>  <script>
+    const dieEl = document.getElementById('die');
+    const rollBtn = document.getElementById('roll');
+    const resetBtn = document.getElementById('reset');
+    const logBody = document.querySelector('#log tbody');
+
+    const allowed = [4,5,6];
+    let count = 0;
+
+    function sample(){
+      const i = Math.floor(Math.random()*allowed.length);
+      return allowed[i];
+    }
+
+    function drawFace(n){
+      // Clear
+      dieEl.innerHTML = '';
+      dieEl.setAttribute('aria-label', `骰子目前點數 ${n}`);
+      dieEl.dataset.anim = 'spin';
+      setTimeout(()=>{ delete dieEl.dataset.anim }, 480);
+
+      // Map pips by n
+      const pipsByN = {
+        1: ['pc'],
+        2: ['p2','p5'],
+        3: ['p2','pc','p5'],
+        4: ['p2','p3','p4','p5'],
+        5: ['p2','p3','pc','p4','p5'],
+        6: ['p2','pm','p4','p3','pn','p5']
+      };
+      (pipsByN[n]||[]).forEach(cls=>{
+        const p = document.createElement('div');
+        p.className = `pip ${cls}`;
+        dieEl.appendChild(p);
+      });
+    }
+
+    function log(n){
+      count++;
+      const tr = document.createElement('tr');
+      const now = new Date();
+      const t = now.toLocaleTimeString(undefined,{hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      tr.innerHTML = `<td>#${count}</td><td>${n}</td><td>${t}</td>`;
+      logBody.prepend(tr);
+    }
+
+    function roll(){
+      const n = sample();
+      drawFace(n);
+      log(n);
+      return n;
+    }
+
+    function reset(){
+      logBody.innerHTML = '';
+      count = 0;
+      drawFace(6);
+    }
+
+    // Events
+    rollBtn.addEventListener('click', roll);
+    resetBtn.addEventListener('click', reset);
+    document.addEventListener('keydown', e=>{
+      if(e.code === 'Space'){ e.preventDefault(); roll(); }
+      if(e.key==='r' || e.key==='R'){ reset(); }
+    });
+
+    // Init
+    drawFace(6);
+  </script></body>
+</html>
